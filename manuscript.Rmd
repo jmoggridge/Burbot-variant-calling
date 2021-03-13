@@ -1,30 +1,439 @@
 ---
-title: 'Project 3: Variant Calling'
+title: 'Project 3: Variant calling in Burbot (*Lota lota*) using `freebayes` and `mpileup`'
 author: "J Moggridge"
 date: "06/03/2021"
-output: pdf_document
+output: 
+  pdf_document:
+    highlight: tango
+bibliography: references.bib
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, echo=F}
+knitr::opts_chunk$set(warning = T, message = T, eval = T, fig.align = 'center', echo = T, tidy = T, cache = T)
 ```
 
-## R Markdown
+```{=html}
+<!-- For this project, we will use multiple variant calling softwares to identify variable sites in genomic data. We will again use the burbot dataset that we used in Project 2, because this dataset is a nice size for teaching and learning (big enough to be realistic, not so large as to be unwieldy).
+ 
+ From the three variant callers we used in class –GATK Haplotype Caller (McKenna et  al., 2010), Freebayes (Garrison & Marth, 2012), and bcftools mpileup (Liet al., 2009) – please select two to use for this project. 
+ 
+ Use the 10 individual sorted.bam files from Project 2 (along with indexes, .bai) for this analysis. You may choose to use your own results from Problem Set 2, or may use .bam files that I will provide. 
+ 
+ Call variants for these 10 individuals using two different software packages. 
+ Filter resulting vcfs for quality, as shown in class, using what you think is a reasonable threshold. 
+ - check transition/transversion ratio: 
+ Compare the resulting vcf files in several ways. First, compare the number of SNPs and the overlap of these SNPs across files. 
+ 
+ Then, plot:
+  - the minor allele frequency 
+  - and depth of all SNPs (summed across individuals), and discuss the variation across loci. 
+ 
+ Compare across vcfs produced by different variant callers. 
+ ###
+ https://samtools.github.io/bcftools/howtos/index.html
+ -->
+```
+# Introduction
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+Variant calling / genotyping Sequencing error is high, need to filter and assess likelihoods. Low concordance between methods, however. No ground truth available to ascertain exactly what is an error.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+Comparing BCFTOOLS mpileup and freebayes
 
-```{r cars}
-summary(cars)
+`mpileup` uses ... @Li2011
+
+`freebayes` uses... @garrison2012
+
+---
+
+# Methods
+
+<!-- (chmod 755 /scratch/username/directory/ -R). -->
+
+<!-- srun --pty --account="def-nricker" -t 0-03:00:00 --mem=32000 /bin/bash -->
+
+### Dataset 
+
+I used data from project \#2 in this work, specifically the reads mapped to the burbot reference with the`bowtie2` aligner. I used `bcftools mpileup` and `GATK HaplotypeCaller` to call variants for the ten individuals using these alignments.
+
+I first needed to convert my `.sam` files to `.bam` format and index them, as well as adding read groups using `picard` (necessary for `freebayes`).
+
+```{r sam-to-bam and readgroups, engine = 'bash', eval = FALSE, echo=TRUE}
+#!/bin/bash
+## to convert .sam to .bam, then sort & index
+module load samtools
+for file in bam/*.sam; do
+  name=`echo $file | sed 's/\.sam//'`;
+  echo $name;
+  samtools view -b -S -o $name.bam $file;
+  samtools sort $name.bam -o $name.sorted.bam;
+  samtools index $name.sorted.bam
+done
+
+# add readgroups and re-index; show output to verify
+module load picard 
+group=1
+for file in bam/*.sorted.bam
+do
+  label=`echo $file | sed 's/.sorted.bam//'`
+  java -jar $EBROOTPICARD/picard.jar AddOrReplaceReadGroups I=$file \
+    O=$label.rg.sorted.bam RGID=$group RGLB=lib1 RGPL=illumina RGPU=unit1 RGSM=$label
+  samtools index $label.rg.sorted.bam
+  echo "group number: $group; file: $file; read group:"
+  samtools view -H $label.rg.sorted.bam | grep "@RG"
+  group=$((group+1))
+done
 ```
 
-## Including Plots
+### `bcftools mpileup/call` and `freebayes`
 
-You can also embed plots, for example:
+I ran `bcftools` variant calling for the 10 .sorted.bam files. I added arguments to provide annotations for read depth and allelic depth (-a DP,AD), to skip indels, to specify Illumina as the sequencing platform (-P), to consider up to 1000 reads at a locus instead of the default 250 (--max-depth). In variant calling, I specified to use the multi-allelic caller, to skip indels, and to provide the genotype quality scores (GQ). Bash commands given:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r mpileup, engine = 'bash', eval = FALSE, echo=TRUE}
+module load nixpkgs/16.09  gcc/7.3.0 bcftools/1.9
+# mpileup and variant calling
+bcftools mpileup -Ou -a DP,AD --skip-indels -P ILLUMINA  --max-depth 1000 \
+-f ./burbot_ref/GCA_900302385.1_ASM90030238v1_genomic.fna ./bam/*.rg.sorted.bam | \
+bcftools call -mv --format-fields GQ -o  mpileup.call.vcf
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+I called SNPs with `freebayes` with similar settings applied for `mpileup`. Unfortunately there seems to be no equivalent for maximum reads consider (--max-depth), though this probably doesn't matter too much. Bash commands given:
+
+```{r freebayes, engine = 'bash', eval = FALSE, echo = TRUE}
+module --force purge; module load nixpkgs/16.09  gcc/7.3.0 freebayes/1.2.0
+# create a list of files to pass to as inputs
+> files.txt
+for file in bam/*.rg.sorted.bam; do echo $file >> files.txt; done
+# free-bayes calling
+freebayes -f burbot_ref/GCA_900302385.1_ASM90030238v1_genomic.fna  \
+--genotype-qualities --bam-list files.txt | vcffilter -f "TYPE = snp" > freebayes.call.vcf
+module unload freebayes
+```
+
+## Filtering variant calls
+
+Biallelic SNPs were retained if they had a minimum quality score of 30, minimum genotyping quality score of 10, and been genotyped in at least 50% of individuals. Given the small number of individuals, I did not feel it necessary to filter by allele frequency. There was no need to exclude any individuals, as none had more that 10% missing data (from `--missing-indv`) .
+
+<!-- (--remove-filtered-all) is like  (--apply-filter "PASS")-->
+
+<!-- (--min-alleles 2 --max-alleles 2) for biallelic -->
+
+<!-- (--minQ 30 --minGQ 10 --max-missing 0.5) for QUAL, GQ, and prop missing data -->
+
+<!-- (-recode --recode-INFO-all) to get a new vcf with annotation data -->
+
+```{r filtering, engine='bash', eval = FALSE, echo = TRUE}
+module --force purge; module load StdEnv/2020 vcftools/0.1.16
+# filter mpileup calls
+vcftools --vcf mpileup.call.vcf --minQ 30 --minGQ 10 --max-missing 0.5 \
+--min-alleles 2 --max-alleles 2 --remove-indels \
+--remove-filtered-all --recode --recode-INFO-all --out mpileup.q30gq10g5
+# same thing for freebayes
+vcftools --vcf freebayes.call.vcf --minQ 30 --minGQ 10 --max-missing 0.5 \
+--min-alleles 2 --max-alleles 2 --remove-indels \
+--remove-filtered-all --recode --recode-INFO-all --out freebayes.q30gq10g5
+
+## check individuals; the amount of data missing is < 12% for all in each file
+vcftools --vcf mpileup.q30gq10g5.recode.vcf --missing-indv \
+  --out mpileup.q30gq10g5
+cat mpileup.q30gq10g5.imiss
+vcftools --vcf freebayes.q30gq10g5.recode.vcf --missing-indv \
+  --out freebayes.q30gq10g5
+cat freebayes.q30gq10g5.imiss
+```
+
+### Count SNPs with `bcftools stats` and `isec`
+
+```{r count snps, engine = 'bash', eval = FALSE, echo = TRUE}
+module load StdEnv/2020 bcftools/1.10.2
+# count the snps: 40,265 and 29,176
+bcftools stats mpileup.q30gq10g5.recode.vcf | grep "number of SNPs:" | cut -f4
+bcftools stats freebayes.q30gq10g5.recode.vcf | grep "number of SNPs:" | cut -f4 
+# no indels present, so I did one thing right at least
+bcftools stats mpileup.q30gq10g5.recode.vcf | grep "number of indels:"
+bcftools stats freebayes.q30gq10g5.recode.vcf | grep "number of indels:"
+
+# compare files to get intersection - doesnt work
+### vcftools --vcf mpileup.q30gq10g5.recode.vcf  --diff freebayes.q30gq10g5.recode.vcf \
+### --diff-site --out vcf_compare_vcftools
+```
+
+The differences in SNP sets were 
+```{r, engine = 'bash', eval = FALSE, echo = TRUE}
+# prepare mpileup snps by zipping and indexing
+bgzip mpileup.q30gq10g5.recode.vcf
+bcftools index mpileup.q30gq10g5.recode.vcf.gz
+# Prepare freebayes snps and indexing
+bgzip freebayes.q30gq10g5.recode.vcf
+bcftools index freebayes.q30gq10g5.recode.vcf.gz
+# Compute intersection of 2 files to isec/
+bcftools isec -p isec mpileup.q30gq10g5.recode.vcf.gz freebayes.q30gq10g5.recode.vcf.gz
+# Get this data into a useable format
+> Overlap.vals
+for file in isec/*.vcf
+do 
+  bcftools stats $file| grep "number of SNPs:" | cut -f4 >> Overlap.vals
+done
+echo $'unique to mpileup\nunique to freebayes\nshared\nshared' > Overlap.names
+paste  Overlap.names Overlap.vals > Overlap.tsv
+sed -i '1s/^/SNPs\tCount\n/' Overlap.tsv
+cat Overlap.tsv
+rm Overlap.names Overlap.vals
+# from local terminal
+# scp jmoggrid@cedar.computecanada.ca:/scratch/jmoggrid/Project3/Overlap.tsv .
+```
+
+```{r vcf allele freq, engine = 'bash', eval = FALSE, echo = TRUE}
+# allele frequency stats > output to .frq files
+vcftools --gzvcf mpileup.q30gq10g5.recode.vcf.gz --freq --out mpileup.q30gq10g5
+vcftools --gzvcf freebayes.q30gq10g5.recode.vcf.gz --freq --out freebayes.q30gq10g5
+# depth for each individual >
+vcftools --vcf file.vcf --depth -c > ind_depth.txt
+vcftools --gzvcf mpileup.q30gq10g5.recode.vcf.gz --depth -c > mpileup_ind_depth.txt
+vcftools --gzvcf freebayes.q30gq10g5.recode.vcf.gz --depth -c > freebayes_ind_depth.txt
+```
+
+<!-- quality, as shown in class, using what you think is a reasonable threshold. Compare the resulting vcf files in several ways. First, *compare the number of SNPs* and the *overlap of these SNPs across files*. -->
+
+<!-- Then, plot the *minor allele frequency* and depth of all SNPs (summed across individuals), and discuss the variation across loci. Compare across vcfs produced by different variant callers. -->
+
+---
+
+### R code
+
+#### Reading in the data:
+
+    # get data down from cedar in local terminal:
+    # scp jmoggrid@cedar.computecanada.ca:/scratch/jmoggrid/Project3/Overlap.tsv .
+    # scp jmoggrid@cedar.computecanada.ca:/scratch/jmoggrid/Project3/*.frq .
+    # scp jmoggrid@cedar.computecanada.ca:/scratch/jmoggrid/Project3/*ind_depth .
+
+```{r load data, message=FALSE}
+#! R code:
+library(tidyverse, quietly = T)
+# Overlap counts
+Overlap <- read_delim('./data/Overlap.tsv', '\t') %>%  distinct() %>% 
+  bind_rows(
+    tibble(SNPs = c('mpileup', 'freebayes'), 
+           Count = c(.[1,2][[1]] + .[3,2][[1]], .[2,2][[1]] + .[3,2][[1]])
+    )) %>% 
+  arrange(desc(Count))
+# Allele frequencies
+frq_names <- c('CHROM','POS', 'N_ALLELES','N_CHR','AL1','AL2')
+Allele_freq <- 
+  bind_rows(
+    read_tsv('./data/freebayes.q30gq10g5.frq', 
+             col_names = frq_names, skip = 1L) %>% 
+      mutate(Caller = 'freebayes'),
+    read_tsv('./data/mpileup.q30gq10g5.frq', 
+             col_names = frq_names, skip = 1L) %>% 
+      mutate(Caller = 'mpileup')
+  ) %>% 
+  mutate(G1.allele = str_remove(AL1, ':.+'),
+         G1.freq = str_remove(AL1, '.:'),
+         G2.allele = str_remove(AL2, ':.+'),
+         G2.freq = str_remove(AL2, '.:')
+        ) %>% 
+  mutate(across(contains('freq'), as.numeric))
+
+# Depth
+Depth <- bind_rows(
+  read_tsv('./data/mpileup_ind_depth.txt') %>% mutate(Caller = 'mpileup'),
+  read_tsv('./data/freebayes_ind_depth.txt') %>% mutate(Caller = 'freebayes')) %>% 
+  mutate(INDV = str_remove_all(INDV, 'bam.|.bowtie.burbot')) %>% 
+  arrange(INDV)
+Depth
+```
+
+---
+
+\newpage
+
+# Results
+
+```{r table snps and overlap, echo=FALSE}
+Overlap %>% 
+  pander::pander(caption = 'Total, shared, and unique SNPs called by mpileup and freebayes', justify='left')
+```
+
+
+```{r , message=FALSE}
+Depth %>% 
+  pivot_longer(cols = c(N_SITES, MEAN_DEPTH)) %>% 
+   ggplot(aes(y=INDV, x=value)) +
+  geom_point() +
+  geom_segment(aes(x = 0, xend=value, yend=INDV)) +
+  facet_wrap(Caller~name, ncol=2, scales='free_x') +
+  labs(y='', subtitle = 'Depth stats') +
+  theme_bw()
+```
+
+```{r}
+ggplot(Allele_freq %>% filter(G1.freq != 0), aes(x = G1.freq, fill=G1.allele)) +
+  geom_histogram(bins = 20, colour = 'white',) +
+  facet_wrap(~Caller) +
+  rcartocolor::scale_fill_carto_d() +
+  labs(x = 'minor allele frequency', fill = 'Allele') +
+  theme_bw()
+```
+
+```{r, fig.cap='Mean read depth of SNPs for each individual (points) and the distribution (line)'}
+set.seed(45)
+library(ggbeeswarm)
+ggplot(Depth, aes(y = MEAN_DEPTH, x = Caller)) +
+ geom_violin(alpha=0.1, draw_quantiles = TRUE, trim = F) +
+  # geom_jitter(aes(color=INDV), height = 0.12) +
+  ggbeeswarm::geom_quasirandom(aes(color=INDV), size=3, width = 0.3) + 
+  rcartocolor::scale_color_carto_d() +
+  guides(colour = guide_legend(override.aes = list(size=5, pch=15))) +
+  facet_wrap(~Caller, scales = 'free_x') +
+  labs(y = 'mean depth per locus', x = '', color = 'Individual') +
+  theme_bw() +  
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+
+\newpage
+
+# Discussion
+
+------------------------------------------------------------------------
+
+\newpages
+
+# References
+
+------------------------------------------------------------------------
+
+<!-- ## `bcftools` filter: multiple qualities -->
+
+<!-- module load bcftools -->
+
+<!-- # filter snps with qual 20 & depth ? -->
+
+<!-- touch tstv.txt -->
+
+<!-- echo "i,tstv" > tstv.txt -->
+
+<!-- for i in seq 10 10 50 -->
+
+<!-- do -->
+
+<!--   tstv=`bcftools filter -i'%QUAL>$i' calls.vcf.gz | bcftools stats > mpileup.qual_$i.stats -->
+
+<!--   grep TSTV mpileup.qual_$i.stats -->
+
+<!--   echo "$i,$tstv" >> tstv.txt -->
+
+<!-- done -->
+
+<!-- **do we need the multi-allelic caller -m, if we are only wanting biallelic snps?** -->
+
+<!-- **do we need format-fields GQ if we aren't filtering on GQ?** -->
+
+<!-- - `bcftools mpileup` options:     -->
+
+<!--  - `Ou`: to to work with uncompressed BCF output -->
+
+<!--  - `-a`: Annotate: -->
+
+<!--    - `AD`: allelic depth -->
+
+<!--    - `PD`: Number of high-quality bases (Number=1,Type=Integer) -->
+
+<!--  - `--skip-indels`: Do not perform INDEL calling -->
+
+<!--  - `-P`: Platform; used for calling indels... -->
+
+<!-- - `bcftools call` options:   -->
+
+<!--   - `-v, --variants-only`: output variant sites only -->
+
+<!--   - `-m, --multiallelic-caller`: alternative model for multiallelic and rare-variant calling designed to overcome known limitations in -c calling model (conflicts with -c) -->
+
+<!--   - `-c, --consensus-caller`: the original samtools/bcftools calling method (conflicts with -m) -->
+
+<!-- - `filter` ops:   -->
+
+<!--   - --set-GTs: set genotypes of failed samples to missing value (.) or reference allele (0)   -->
+
+<!--   - `--min-alleles 2 --max-alleles 2`: to only get biallelic SNPs   -->
+
+<!-- - `view` options: -->
+
+<!-- --apply-filter "PASS" -->
+
+<!-- -i 'INFO/SVNTYPE~"DEL"' -->
+
+<!-- ## GATK -->
+
+<!-- ```{r gatk calling, engine = 'bash'} -->
+
+<!-- module --force purge -->
+
+<!-- module load picard -->
+
+<!-- # create the reference index for GATK -->
+
+<!-- java -jar $EBROOTPICARD/picard.jar CreateSequenceDictionary \ -->
+
+<!--   R=burbot_ref/GCA_900302385.1_ASM90030238v1_genomic.fna \ -->
+
+<!--   O=burbot_ref/GCA_900302385.1_ASM90030238v1_genomic.dict -->
+
+<!-- module --force purge -->
+
+<!-- module load nixpkgs/16.09 gatk/4.0.0.0  -->
+
+<!-- ## Basic variant calling command;  -->
+
+<!-- ## bam files are passed from files.txt with ` -I ` before each name -->
+
+<!-- gatk --java-options "-Xmx4g" HaplotypeCaller \ -->
+
+<!-- -R burbot_ref/GCA_900302385.1_ASM90030238v1_genomic.fna \ -->
+
+<!-- `awk '{printf(" -I %s ",$0);}' files.txt` \ -->
+
+<!-- -O gatk.call.vcf -->
+
+<!-- ## generates a billion warning messages (takes many hours) -->
+
+<!-- ``` -->
+
+<!-- vcftools --vcf SMALL_bcftools_filtered.vcf --diff SMALL_freebayes.vcf --diff-site --out bcftools_v_freebayes -->
+
+<!-- ### other Considerations ???-->
+
+<!-- - Remove PCR duplicates? - alignment ... -->
+
+<!-- - Min-quality threshold for variants? try multiple? GATK defaults to 30? -->
+
+<!-- <!-- - Local realignment to improve accuracy for indels (callers favor mismatches) -->
+
+<!-- - transition/transversion ratio as a metric of quality? -->
+
+<!-- ## `bcftools` simple filtering -->
+
+<!-- From variant calls by `freebayes` and `mpileup`, biallelic SNPs (`--min-alleles 2 --max-alleles 2`, `--types snps`) with base quality at least 20 and genotype quality at least 10 (`QUAL > 19 && FMT/GQ >9`) were selected for analysis. -->
+
+<!-- ```{r bcf filter, engine = 'bash', eval = FALSE, echo = TRUE} -->
+
+<!-- ## this is one way to filter, i guess but doesn't give nice little report the way that vcf tools does... -->
+
+<!-- # filtering mpileup calls -->
+
+<!-- ### bcftools filter --set-GTs . --include 'QUAL > 19 && FMT/GQ >9' mpileup.call.vcf | \ -->
+
+<!-- ### bcftools view --min-alleles 2 --max-alleles 2 --types snps --apply-filter "PASS" \ -->
+
+<!-- ### --output-type v --output-file mpileup.filtered.vcf -->
+
+<!-- ### # filtering freebayes calls -->
+
+<!-- ### bcftools filter --set-GTs . --include 'QUAL > 19 && FMT/GQ >9' freebayes.call.vcf | \ -->
+
+<!-- ### bcftools view --min-alleles 2 --max-alleles 2 --types snps --apply-filter "PASS" \ -->
+
+<!-- ### --output-type v --output-file freebayes.filtered.vcf -->
+
+<!-- ``` -->

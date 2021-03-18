@@ -1,13 +1,16 @@
 ---
-title: 'Project 3: Variant calling in Burbot (*Lota lota*) using `freebayes` and `mpileup`'
-author: "J Moggridge"
-date: "06/03/2021"
+title: ''
+author: ""
 output: 
   pdf_document:
     highlight: kate
 bibliography: references.bib
 link-citations: true
 ---
+
+# Project 3: Variant calling in Burbot (*Lota lota*) using `freebayes` and `mpileup`
+
+Jason Moggridge 1159229
 
 ```{r setup, echo=F}
 knitr::opts_chunk$set(warning = F, message = F)
@@ -17,25 +20,22 @@ knitr::opts_chunk$set(warning = F, message = F)
 
 # Introduction
 
-<!-- purpose of variant calling -->
-
-The analysis of genetic variants (single-nucleotide polymorphisms -SNPs and insertions/deletions - indels), by high-throughput sequencing has applications in studies of phylogeny and population structure, quantitative-trait loci, genome-wide associations, among others. Such polymorphic sites are also of practical interest in medical genomics, *eg*. to discover disease-causing mutations [@cornish2015], and in agriculture, where SNPs can be used as genetic markers to guide breeding of crops [@yao2020] and livestock [@ni2015]. As the cost of sequencing has decreased greatly and computational resources have improved, these techniques have become increasingly popular.
+The analysis of genetic variants (single-nucleotide polymorphisms -SNPs and insertions/deletions - indels) by high-throughput sequencing has applications in studies of phylogeny and population structure, quantitative-trait loci, genome-wide associations, among others. Such polymorphic sites are also of practical interest in clinical genomics, *eg*. to discover disease-causing mutations [@cornish2015], and in agriculture, where SNPs can be used as genetic markers to guide breeding of crops [@yao2020] and livestock [@ni2015]. As the cost of sequencing has decreased greatly and computational resources have improved, these techniques have become increasingly popular.
 
 The identification of polymorphic sites from sequencing data, known as variant calling, is performed after alignment of reads to a reference genome. Because high-throughput sequencing and read-mapping are error-prone, it is challenging but essential to differentiate true variants from artefacts, particularly in low-coverage data [@nielsen2011]. Many tools for variant calling have been created for this classification task (`bcftools`, `GATK`, `freebayes`, *etc.*), though these differ in their statistical models for inferring genotypes. Further filtering of variants is generally applied after calling, and how this is performed will vary depending on the nature of the study.
 
 In the current work I compared variant calling by two tools: `bcftools mpileup/call` (previously `samtools`) and `freebayes`. The results were compared in terms of the number of SNPs, the overlap between sets, the depth at each position, and their minor allele frequencies. Both `bcftools` and `freebayes` apply Bayesian models to estimate genotype posterior probabilities, though they differ in how this is implemented. `bcftools` uses a two step process where `mpileup` first creates the 'pileup' of all reads at variant sites, and then `call` is used to infer genotypes at these [@li2011, @danecek2021]. This implementation has the advantage of being very fast. `freebayes` a uses different approach to inferring haplotypes in that it does not use the alignment but the full reads [@garrison2012, @howtof]. Previous comparisons of variant callers have often found low concordance between tools and issues with sensitivity [@orawe2013, @cornish2015]. However, others have reported high concordance and accuracy in their evaluation [@hwang2015]; the best method is likely dependent on nature of the sequencing data: (whole-genome or exome, RAD-seq, RNA-seq, *etc*.), the depth of coverage, and the type of variants of interest (*eg.* SNPs or indels).
 
-------------------------------------------------------------------------
 
 # Methods
 
-Data can be found on `cedar` in `/scratch/jmoggrid/Project3/`. <!-- (chmod 755 /scratch/username/directory/ -R). --> <!-- srun --pty --account="def-nricker" -t 0-03:00:00 --mem=32000 /bin/bash -->
-
 ### Dataset
 
-I used data from project \#2 in this work, specifically the reads mapped to the burbot reference with the `bowtie2` aligner. I used `bcftools mpileup` and `GATK HaplotypeCaller` to call variants for the ten individuals using these alignments.
+*All files can be found on `cedar` in `/scratch/jmoggrid/Project3/`.*
 
-I first needed to convert my `.sam` files to `.bam` format and index them, as well as adding read groups using `picard` (necessary for `freebayes`).
+I used data from project \#2 in this work, specifically the reads mapped to the burbot reference with the `bowtie2` aligner. I used `bcftools mpileup` and `GATK HaplotypeCaller` to call variants for the ten individuals using these alignments. I first needed to convert my `.sam` files to `.bam` format and index them, as well as adding read groups using `picard` (necessary for `freebayes`).
+
+<!-- fyi - bash code chunks have engine='bash' in their header -->
 
 ```{r sam-to-bam and readgroups, engine = 'bash', eval = FALSE, echo=TRUE}
 #!/bin/bash

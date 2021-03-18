@@ -23,11 +23,9 @@ The analysis of genetic variants (single-nucleotide polymorphisms -SNPs and inse
 
 The identification of polymorphic sites from sequencing data, known as variant calling, is performed after alignment of reads to a reference genome. Because high-throughput sequencing and read-mapping are error-prone, it is challenging but essential to differentiate true variants from artefacts, particularly in low-coverage data [@nielsen2011]. Many tools for variant calling have been created for this classification task (`bcftools`, `GATK`, `freebayes`, *etc.*), though these differ in their statistical models for inferring genotypes. Further filtering of variants is generally applied after calling, and how this is performed will vary depending on the nature of the study.
 
-In the current work I compared variant calling by two tools: `bcftools mpileup/call` (previously `samtools`) and `freebayes`. Both `bcftools` and `freebayes` apply Bayesian models to estimate genotype posterior probabilities, though they differ in how this is implemented. `bcftools` uses a two step process where `mpileup` first creates the 'pileup' of all reads at variant sites, and then `call` is used to infer genotypes at these [@li2011c; @danecek2021a]. This implementation has the advantage of being very fast. `freebayes` a uses different approach to inferring haplotypes in that it does not use the alignment but the full reads [@garrison2012a; @howtofa].
+In the current work I compared variant calling by two tools: `bcftools mpileup/call` (previously `samtools`) and `freebayes`. Both `bcftools` and `freebayes` apply Bayesian models to estimate genotype posterior probabilities, though they differ in how this is implemented. `bcftools` uses a two step process where `mpileup` first creates the 'pileup' of all reads at variant sites, and then `call` is used to infer genotypes at these [@li2011, @danecek2021]. This implementation has the advantage of being very fast. `freebayes` a uses different approach to inferring haplotypes in that it does not use the alignment but the full reads [@garrison2012, @howtof]. 
 
-In this work, `bcftools` and `freebayes` variant callers were used to obtain biallelic SNPs and results were compared in terms of the number of SNPs, the overlap between sets, the depth at each position, and their minor allele frequencies.
-
-Best method could depend on nature of the sequencing data: eg. whole-genome, RAD-seq, RNA-seq, scRNA-seq, etc, and the depth of coverage.
+In this work, I used `bcftools` and `freebayes`callers to find biallelic SNPs. The results were compared in terms of the number of SNPs, the overlap between sets, the depth at each position, and their minor allele frequencies. Previous comparisons of variant callers have often found low concordance between tools and issues with sensitivity [@orawe2013, @cornish2015], though others have reported high concordance and accuracy in their results [@hwang2015]. Best method could depend on nature of the sequencing data: eg. whole-genome, RAD-seq, RNA-seq, scRNA-seq, etc, and the depth of coverage.
 
 ------------------------------------------------------------------------
 
@@ -181,6 +179,29 @@ vcftools --gzvcf mpileup.filter.recode.vcf.gz --site-depth --out mpileup
 vcftools --gzvcf freebayes.filter.recode.vcf.gz --site-depth --out freebayes
 ```
 
+-   Mean depth for each individual across all loci
+
+```{r vcf_indv_depth, engine = 'bash', eval = FALSE, echo = TRUE}
+vcftools --gzvcf mpileup.filter.recode.vcf.gz --depth --out mpileup
+vcftools --gzvcf freebayes.filter.recode.vcf.gz --depth --out freebayes
+```
+
+<!-- ## Relatedness -->
+
+<!-- vcftools --gzvcf mpileup.filter.recode.vcf.gz --relatedness --out mpileup -->
+
+<!-- vcftools --gzvcf freebayes.filter.recode.vcf.gz --relatedness --out freebayes -->
+
+<!-- ## Convert to (0,1,2) format -->
+
+<!-- vcftools --gzvcf mpileup.filter.recode.vcf.gz --012 --out mpileup -->
+
+<!-- vcftools --gzvcf freebayes.filter.recode.vcf.gz --012 --out freebayes -->
+
+<!-- quality, as shown in class, using what you think is a reasonable threshold. Compare the resulting vcf files in several ways. First, *compare the number of SNPs* and the *overlap of these SNPs across files*. -->
+
+<!-- Then, plot the *minor allele frequency* and depth of all SNPs (summed across individuals), and discuss the variation across loci. Compare across vcfs produced by different variant callers. -->
+
 ```{=html}
 <!-- # get data down from cedar in local terminal:
  scp jmoggrid@cedar.computecanada.ca:/scratch/jmoggrid/Project3/Overlap.tsv .
@@ -195,28 +216,27 @@ vcftools --gzvcf freebayes.filter.recode.vcf.gz --site-depth --out freebayes
 
 I created figures and summary tables from the data generated above using the `R` language.
 
-```{r load_data, message=FALSE}
+```{r load data, message=FALSE}
 #! {R code}
 library(tidyverse, quietly = T)
 
 # Overlap counts table; add
 Overlap <- read_delim('./data/Overlap.tsv', '\t') %>%  
   distinct() %>% 
-  bind_rows(tibble(SNPs = c('mpileup', 'freebayes'), 
-                   Count = c(.[1,2][[1]] + .[3,2][[1]], 
-                             .[2,2][[1]] + .[3,2][[1]]))) %>%  
+  bind_rows(
+    tibble(SNPs = c('mpileup', 'freebayes'), 
+           Count = c(.[1,2][[1]] + .[3,2][[1]], 
+                     .[2,2][[1]] + .[3,2][[1]]))) %>%  
   arrange(desc(Count))
-```
 
-```{r load_data2, message=FALSE, echo=FALSE}
 # Allele frequencies
 cnames <- c('chrom','pos', 'n_alleles','n_chr','a1','a2')
 AlleleFreq <-  
   bind_rows(
-    read_tsv('./data/mpileup.filter.frq', col_names = cnames, skip = 1L) %>% 
-      mutate(caller = 'mpileup'),
     read_tsv('./data/freebayes.filter.frq', col_names = cnames, skip = 1L) %>% 
-      mutate(caller = 'freebayes')
+      mutate(caller = 'freebayes'),
+    read_tsv('./data/mpileup.filter.frq', col_names = cnames, skip = 1L) %>% 
+      mutate(caller = 'mpileup')
   ) %>% 
   mutate(allele = str_extract(a1, '[A-Z]+'), 
          frequency = str_remove_all(a1, '[A-Z]+:'),
@@ -253,28 +273,27 @@ SiteDepth <- bind_rows(
 vcf_df <- SiteDepth %>%
   rename(chrom = chr) %>% 
   left_join(AlleleFreq, by = c('chrom', 'pos', 'caller'))
+# glimpse(vcf_df)
 
 cnames <- c('id', 'quality', 'n_snps', 'ts', 'tv', 'indels')
-qual_df <- bind_rows(
-  read_tsv("./data/mpileup.quality.stats",
-                 skip = 1L, col_names = cnames) %>% 
-  mutate(caller = "mpileup"),
+qual_df <- 
   read_tsv("./data/freebayes.quality.stats",
                  skip = 1L, col_names = cnames) %>% 
-  mutate(caller = "freebayes")
-  ) %>% 
-  mutate(caller = as_factor(caller))
+  mutate(caller = "freebayes") %>% 
+  bind_rows(
+    read_tsv("./data/mpileup.quality.stats",
+                 skip = 1L, col_names = cnames) %>% 
+  mutate(caller = "mpileup")
+  ) 
 
 ```
 
 ```{r figs, echo=F}
-## this chunk contains code for all the plots
 library(ggbeeswarm)
 library(patchwork)
 library(rcartocolor)
 library(gridExtra)
 library(grid)
-
 # Allele frequency histogram (alleles stacked)
 fig_allelefreq <- 
   ggplot(AlleleFreq) +
@@ -286,13 +305,11 @@ fig_allelefreq <-
 # The distribution of depth per-site summed across individuals
 fig_sitedepth <- 
   ggplot(SiteDepth, aes(x = allele_depth, fill = caller, color = caller)) +
-  geom_density(alpha = 0.2) +
+  geom_density(alpha = 0.12) +
   geom_vline(aes(xintercept = mean(allele_depth), color = caller),
              lty = 2) +
   scale_x_log10() +
-  labs(x = 'depth per locus\n(sum of 10 individuals)', y = 'density') +
-  scale_color_carto_d(palette = 2, direction = -1) +
-  scale_fill_carto_d(palette = 2, direction = -1) +
+  labs(x = 'depth per locus', y = 'density') +
   guides(colour = guide_legend(override.aes = list(size=1, pch=15))) +
   theme_bw() +
   theme(legend.position = c(.8,.7))
@@ -325,23 +342,6 @@ fig_alleledepth_over_maf <-
        y = "Allele depth", 
        color="Number of\nchromosomes") +
   theme_bw()
-
-# Quality score distribution by caller fig
-fig_quality_dist <- qual_df %>% 
-  mutate(QUAL = round(quality/25)*25) %>% 
-  group_by(QUAL, caller) %>% 
-  summarise(n_snps = sum(n_snps),
-            ts  = sum(ts),
-            tv = sum(tv)) %>% 
-  pivot_longer(cols = c(ts,tv)) %>% 
-  ggplot(aes(x = QUAL, y = value, fill = name)) +
-  geom_col(width = 19) +
-  facet_wrap(~caller) +
-  scale_fill_carto_d(palette = 2) +
-  labs(x="quality score", y = "loci", fill = NULL) +
-  scale_y_log10() +
-  theme_bw()
-
 ```
 
 ------------------------------------------------------------------------
@@ -368,11 +368,42 @@ tribble(
 Overlap %>% pander::pander(caption = "Total, shared, and unique SNPs called by mpileup and freebayes (after filtering).")
 ```
 
-```{r fig1, echo=F, fig.align = 'center', fig.width=8, fig.height=3.5, fig.cap="(A) Distribution of minor allele frequency; SNPs with frequency = 0 or 1 were omitted. (B) Distribution of depth per locus summed across all individuals (note log-scaled x-axis)."}
+```{r fig1, echo=F, fig.align = 'center', fig.width=7, fig.height=3, fig.cap="(A) Distribution of minor allele frequency; SNPs with frequency = 0 or 1 were omitted. (B) Distribution of depth per locus summed across all individuals (note log-scaled x-axis)."}
 
 (fig_allelefreq + fig_sitedepth) &
 plot_layout(guides = 'keep') &
 plot_annotation(tag_levels = 'A')
+```
+
+```{=html}
+<!-- Zeggini, E., & Morris, A. (2015). Assessing Rare Variation in Complex Traits Design and Analysis of Genetic Studies (1st ed. 2015.). Springer 
+New York. <https://doi.org/10.1007/978-1-4939-2824-8> -->
+```
+```{r engine = 'bash', eval=FALSE}
+## quality scores...
+grep -E "Quality" mpileup.filter.recode.stats | cut -f1 --complement > mpileup.quality.stats
+grep ^QUAL mpileup.filter.recode.stats | cut -f1 --complement >> mpileup.quality.stats 
+grep -E "Quality" freebayes.filter.recode.stats | cut -f1 --complement > freebayes.quality.stats
+grep ^QUAL freebayes.filter.recode.stats | cut -f1 --complement >> freebayes.quality.stats 
+```
+
+
+```{r echo = F}
+fig_quality_dist <- qual_df %>% 
+  mutate(QUAL = round(quality/25)*25) %>% 
+  group_by(QUAL, caller) %>% 
+  summarise(n_snps = sum(n_snps),
+            ts  = sum(ts),
+            tv = sum(tv)) %>% 
+  pivot_longer(cols = c(ts,tv)) %>% 
+  ggplot(aes(x = QUAL, y = value, fill = name)) +
+  geom_col(width = 19) +
+  facet_wrap(~caller) +
+  scale_fill_carto_d(palette = 2) +
+  labs(x="quality score", y = "loci", fill = NULL) +
+  scale_y_log10() +
+  theme_bw()
+
 ```
 
 \newpage
@@ -427,67 +458,22 @@ cornish
 
 # Supplemental Figures
 
-```{r fig_allele_maf_nchr, echo=F, fig.align='center', fig.height=4, fig.cap="Allele depth and minor allele frequency do not show any correlation; minor allele frequency is constrained to specific values by the number of chromosomes represented"}
+```{r}
 fig_alleledepth_over_maf
 ```
 
-## Mean depth by subject
-
-Mean depth for each individual across all loci was computed as follows:
-
-```{r vcf_indv_depth, engine = 'bash', eval = FALSE, echo = TRUE}
-vcftools --gzvcf mpileup.filter.recode.vcf.gz --depth --out mpileup
-vcftools --gzvcf freebayes.filter.recode.vcf.gz --depth --out freebayes
-```
-
-We can see the all individuals have greater mean depth at SNPs called by `freebayes` than `bcftools mpileup` (fig. 4)
-
-```{r fig_indv_depth, echo=F, fig.align = 'center', fig.width=5, fig.height=2.9, fig.cap="Mean depth per locus for each individual is greater for SNPs called by  freebayes than bcftools."}
+```{r fig2, echo=F, fig.align = 'center', fig.width=5, fig.height=2.9, fig.cap="Mean depth per locus for each individual."}
 fig_indvdepth
 ```
 
-### Quality scores
-
-I obtained quality scores for each loci from bctools stats
-
-```{r engine = 'bash', eval=FALSE}
-## quality scores...
-bcftools stats mpileup.filter.recode.vcf > mpileup.filter.recode.stats
-grep -E "Quality" mpileup.filter.recode.stats | cut -f1 --complement > mpileup.quality.stats
-grep ^QUAL mpileup.filter.recode.stats | cut -f1 --complement >> mpileup.quality.stats bcftools stats freebayes.filter.recode.vcf > freebayes.filter.recode.stats
-grep -E "Quality" freebayes.filter.recode.stats | cut -f1 --complement > freebayes.quality.stats
-grep ^QUAL freebayes.filter.recode.stats | cut -f1 --complement >> freebayes.quality.stats
-```
-
-```{r fig3, echo=F, fig.align = 'center', fig.width=5, fig.height=2.9, fig.cap="Minor allele fre"}
+```{r fig3, echo=F, fig.align = 'center', fig.width=5, fig.height=2.9, fig.cap="Mean depth per locus for each individual."}
 fig_alleledepth_over_maf
 ```
 
-```{r fig4, echo=F, fig.height = 3, fig.align = 'center', fig.width=5, fig.height=2.9, fig.cap="The quality score distributions of freebayes and bcftools mpileup "}
-fig_quality_dist
+```{r}
+
 ```
-
-<!-- ## Relatedness -->
-
-<!-- vcftools --gzvcf mpileup.filter.recode.vcf.gz --relatedness --out mpileup -->
-
-<!-- vcftools --gzvcf freebayes.filter.recode.vcf.gz --relatedness --out freebayes -->
-
-<!-- ## Convert to (0,1,2) format -->
-
-<!-- vcftools --gzvcf mpileup.filter.recode.vcf.gz --012 --out mpileup -->
-
-<!-- vcftools --gzvcf freebayes.filter.recode.vcf.gz --012 --out freebayes -->
-
-<!-- quality, as shown in class, using what you think is a reasonable threshold. Compare the resulting vcf files in several ways. First, *compare the number of SNPs* and the *overlap of these SNPs across files*. -->
-
-<!-- Then, plot the *minor allele frequency* and depth of all SNPs (summed across individuals), and discuss the variation across loci. Compare across vcfs produced by different variant callers. -->
 
 \newpage
 
 # References
-
-```{=html}
-<!-- Zeggini, E., & Morris, A. (2015). Assessing Rare Variation in Complex Traits Design and Analysis of Genetic Studies (1st ed. 2015.). Springer 
-New York. <https://doi.org/10.1007/978-1-4939-2824-8> -->
-```

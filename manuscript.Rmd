@@ -4,16 +4,19 @@ author: ""
 output: 
   pdf_document:
     highlight: kate
+  html_notebook:
+    highlight: kate
 bibliography: references.bib
 link-citations: true
 ---
 
 # Project 3: Comparison of variant calling by `freebayes` and `mpileup` from high-throughput sequencing of Burbot (*Lota lota*)
 
-Jason Moggridge 1159229
+Jason Moggridge 1159229  
+2021/04/19  
 
 ```{r setup, echo=F}
-knitr::opts_chunk$set(warning = F, message = F)
+knitr::opts_chunk$set(warning = F, message = F, cache = T)
 ```
 
 ------------------------------------------------------------------------
@@ -24,7 +27,7 @@ The analysis of genetic variants (single-nucleotide polymorphisms -SNPs and inse
 
 The identification of polymorphic sites from sequencing data, known as variant calling, is performed after alignment of reads to a reference genome. Because high-throughput sequencing and read-mapping are error-prone, it is challenging but essential to differentiate true variants from artefacts, particularly in low-coverage data [@nielsen2011]. Many tools for variant calling have been created for this classification task (`bcftools`, `GATK`, `freebayes`, *etc.*), though these differ in their statistical models for inferring genotypes. Further filtering of variants is generally applied after calling, and how this is performed will vary depending on the nature of the study.
 
-In the current work I compared variant calling by two tools: `bcftools mpileup/call` (previously `samtools`) and `freebayes`. The results were compared in terms of the number of SNPs, the overlap between sets, the depth at each position, and their minor allele frequencies. Both `bcftools` and `freebayes` apply Bayesian models to estimate genotype posterior probabilities, though they differ in how this is implemented. `bcftools` uses a two step process where `mpileup` first creates the 'pileup' of all reads at variant sites, and then `call` is used to infer genotypes at these [@li2011, @danecek2021]. This implementation has the advantage of being very fast. `freebayes` a uses different approach to inferring haplotypes in that it does not use the alignment but the full reads [@garrison2012; @howtof]. Previous comparisons of variant callers have often found low concordance between tools and issues with sensitivity [@orawe2013, @cornish2015]. However, others have reported high concordance and accuracy in their evaluation [@hwang2015]; the best method is likely dependent on nature of the sequencing data: (whole-genome or exome, RAD-seq, RNA-seq, *etc*.), the depth of coverage, and the type of variants of interest (*eg.* SNPs or indels).
+In the current work I compared variant calling by two tools: `bcftools mpileup/call` (previously `samtools`) and `freebayes`. The results were compared in terms of the number of SNPs, the overlap between sets, the depth at each position, and their minor allele frequencies. Both `bcftools` and `freebayes` apply Bayesian models to estimate genotype posterior probabilities, though they differ in how this is implemented. `bcftools` uses a two step process where `mpileup` first creates the 'pileup' of all reads at variant sites, and then `call` is used to infer genotypes at these [@li2011; @danecek2021]. This implementation has the advantage of being very fast. `freebayes` a uses different approach to inferring haplotypes in that it does not use the alignment but the full reads [@garrison2012; @howtof]. Previous comparisons of variant callers have often found low concordance between tools and issues with sensitivity [@orawe2013; @cornish2015]. However, others have reported high concordance and accuracy in their evaluation [@hwang2015]; the best method is likely dependent on nature of the sequencing data (*eg.* whole-genome or exome, RAD-seq, RNA-seq, *etc*.), the depth of coverage, and the type of variants of interest (*eg.* SNPs or indels).
 
 # Methods
 
@@ -165,7 +168,7 @@ vcftools --gzvcf freebayes.filter.recode.vcf.gz --site-depth --out freebayes
 
 I created figures and summary tables from the data generated above using the `R` language. *This code is presented in the supplementary section at the end of the manuscript.*
 
-```{r load data, message=FALSE}
+```{r load data, message=FALSE, echo=FALSE}
 #! {R code}
 library(tidyverse, quietly = T)
 
@@ -245,7 +248,7 @@ fig_allelefreq <-
   ggplot(AlleleFreq) +
   geom_histogram(aes(x = maf), bins = 20, alpha = 0.8) +
   facet_wrap(caller~., scales = 'free_y') +
-  labs(x = 'minor allele frequency', y='loci') +
+  labs(x = 'Minor Allele Frequency', y='Number of Loci') +
   theme_bw()
 
 # The distribution of depth per-site summed across individuals
@@ -255,7 +258,7 @@ fig_sitedepth <-
   geom_vline(aes(xintercept = mean(allele_depth), color = caller),
              lty = 2) +
   scale_x_log10() +
-  labs(x = 'depth per locus', y = 'density') +
+  labs(x = 'Depth', y = 'Density') +
   guides(colour = guide_legend(override.aes = list(size=1, pch=15))) +
   theme_bw() +
   theme(legend.position = c(.8,.7))
@@ -270,7 +273,7 @@ fig_alleledepth_over_maf <-
   facet_wrap(~caller) +
   scale_color_viridis_c() +
   labs(x = "Minor allele frequency",
-       y = "Allele depth", 
+       y = "Depth", 
        color="Number of\nchromosomes") +
   theme_bw()
 
@@ -283,7 +286,7 @@ fig_indvdepth <-
   scale_color_carto_d(palette = 2) +
   guides(colour = guide_legend(override.aes = list(size = 4, pch = 16))) +
   facet_wrap( ~ caller, scales = 'free_x') +
-  labs(y = 'mean depth per locus', x = '', color = 'Individual') +
+  labs(y = 'Mean Depth', x = '', color = 'Subject') +
   theme_bw() +
   theme(
     axis.text.x = element_blank(),
@@ -301,47 +304,52 @@ fig_quality_dist <- qual_df %>%
   geom_col(width = 19) +
   facet_wrap(~caller) +
   scale_fill_carto_d(palette = 2) +
-  labs(x="quality score", y = "loci", fill = NULL) +
+  labs(x="Quality Score", y = "Number of Loci", fill = NULL) +
   scale_y_log10() +
   theme_bw()
 ```
 
-------------------------------------------------------------------------
 
-\newpage
+------------------------------------------------------------------------
 
 # Results
 
-From the ten burbots in our sample, `mpileup` called a total of 132,046 SNPs, 173 of which were multiallelic, and with a transition:transversion ratio (ts:tv) of 0.81; `freebayes`called a total of 106,973 SNPs, with 1761 being multiallelic, and ts:tv of 0.44 (table 1). After applying filters for these were reduced to 11,115 SNPs with a 0.87 transition:transversion ratio for `mpileup` calls and 6,722 SNPs with 1.09 transition:transversion ratio for `freebayes` calls. The sets of biallelic SNPs identified by each caller were compared (table 2): `mpileup` called `r round(Overlap[1,2][[1]] * 100 / Overlap[2,2][[1]], 2) - 100` % more biallelic SNPs than `freebayes`. Of these, a large proportion (`r scales::comma(Overlap[3,2][[1]])`) were shared between both sets, representing `r round(Overlap[3,2][[1]] * 100 /Overlap[1,2][[1]], 2)` % of `mpileup` calls and `r round(Overlap[3,2][[1]] * 100 /Overlap[2,2][[1]], 2)` % of `freebayes` calls. Additionally, `r Overlap[4,2][[1]]` SNPs were unique to `mpileup` and `r Overlap[5,2][[1]]` to `freebayes`.
-
-The distribution minor allele frequencies of SNPs from `mpileup` shows a U-shape with peaks at 0.05 and 0.5, whereas those from `freebayes` peak at 0.05 and are otherwise evenly distributed (fig.1A). The range of possible values is constrained due to the small sample size (some values can only be obtained with a specific amount of missing data; fig. 2A). The sum depth per locus across all individuals is generally in the range of 50-200 reads, with both callers showing similar distributions (fig. 1B). The mean depth for `mpileup` was 173.7 reads and for `freebayes` 162.2 reads. Both callers have some extreme outliers in terms of site depth: the maximum depth for `freebayes` was 16,162 reads, while for `mpileup` it was only 2522 reads. The minimum site depth was 5 and 3 for `freebayes` and `mpileup` respectively and `mpileup` has a greater proportion of low-depth sites in general. Freebayes also had a greater mean depth per individual (fig. 2B). Both callers show similar distributions of quality scores, though `mpileup` calls a greater proportion of transversions at low-quality sites (fig. 2C).
-
-------------------------------------------------------------------------
+From the ten burbots in our sample, mpileup called a total of 132,046 SNPs, 173 of which were multiallelic, and with a transition:transversion ratio (ts:tv) of 0.81; freebayes called a total of 106,973 SNPs, with 1761 being multiallelic, and ts:tv of 0.44 (table 1). After applying filters for these were reduced to 11,115 SNPs with a 0.87 transition:transversion ratio for mpileup calls and 6,722 SNPs with 1.09 transition:transversion ratio for freebayes calls. The sets of biallelic SNPs identified by each caller were compared (table 2): mpileup called `r round(Overlap[1,2][[1]]* 100 / Overlap[2,2][[1]], 2) - 100` % more biallelic SNPs than freebayes. Of these, a large proportion (`r scales::comma(Overlap[3,2][[1]])`) were shared between both sets, representing `r round(Overlap[3,2][[1]]*100 /Overlap[1,2][[1]], 2)` % of mpileup calls and `r round(Overlap[3,2][[1]]*100 /Overlap[2,2][[1]], 2)` % of freebayes calls. Additionally, `r Overlap[4,2][[1]]` SNPs were unique to mpileup and `r Overlap[5,2][[1]]` unique to freebayes.
 
 ```{r table1_filtering, echo=FALSE}
 tribble(
   ~ Caller, ~ `raw SNPs`, ~ `raw ts/tv`, ~ `post-filter SNPs`, ~ `post-filter ts/tv`,
-  "mpileup", 132046, 0.81, 11115, 0.87,
-  "freebayes", 106973, 0.44, 6722, 1.09
-) %>% pander::pander(caption = "Raw and filtered SNP counts and transition/transversion ratios for calls by mpileup and freebayes.")
+  "mpileup", '132,046', 0.81, '11,115', 0.87,
+  "freebayes", '106,973', 0.44, '6,722', 1.09
+) %>% 
+  pander::pander(caption = "Raw and filtered SNP counts and transition/transversion ratios for calls by mpileup and freebayes.")
 ```
 
-```{r fig1, echo=F, fig.align = 'center', fig.width=7, fig.height=3, fig.cap="(A) Distribution of minor allele frequency; SNPs with frequency = 0 or 1 were omitted. (B) Distribution of depth per locus summed across all individuals (note log-scaled x-axis)."}
+  The distribution minor allele frequencies of SNPs from mpileup shows a U-shape with peaks at 0.05 and 0.5, whereas those from freebayes peak at 0.05 and are otherwise evenly distributed (fig.1A). The range of possible values is constrained due to the small sample size (some values can only be obtained with a specific amount of missing data; fig. 2A). The sum depth per locus across all individuals is generally in the range of 75x-200x, with both callers showing similar distributions (fig. 1B). The mean depth for mpileup was 174 reads and for freebayes 162 reads. Both callers have some extreme outliers in terms of site depth: the maximum depth for freebayes was 16,162 reads, while for mpileup it was only 2522 reads. The minimum site depth was 5 and 3 for freebayes and mpileup respectively and mpileup has a greater proportion of low-depth sites in general. Freebayes also had a greater mean depth per individual (fig. 2B). Both callers show similar distributions of quality scores, though mpileup calls a greater proportion of transversions at low-quality loci than freebayes (fig. 2C).
+
+-----
+
+
+```{r table2_overlap, echo=F}
+Overlap %>% 
+  mutate(Count = scales::comma(Count)) %>% 
+  pander::pander(caption = "Summary of total, shared, and unique SNPs called by mpileup and freebayes (after filtering).")
+```
+
+```{r fig1, echo=F, fig.align = 'center', fig.width=8, fig.height=3, fig.cap="(A) Distribution of minor allele frequency; SNPs with frequency = 0 or 1 were omitted. (B) Distribution of depth per locus summed across all individuals (nb: the x-axis is log-scaled)."}
 (fig_allelefreq + fig_sitedepth) &
   plot_layout(guides = 'keep') &
   plot_annotation(tag_levels = 'A')
 ```
 
-```{r table2_overlap, echo=F}
-Overlap %>% 
-  pander::pander(caption = "Summary of total, shared, and unique SNPs called by mpileup and freebayes (after filtering).")
-```
 
-
-```{r fig2, echo=F, fig.align = 'center', fig.width=6, fig.height=7, fig.cap="(A) Scatterplot of loci (points) by allele depth and minor allele frequency, colored by the number of chromosomes counted. Due to the sample size (n=10), minor allele frequencies are constrained by the number of chromosomes at the SNP site; there appears to be no relationship between allele depth (ie. read coverage) and minor allele frequencies. \n(B) Mean depth per locus for each individual. Violin plot lines indicate quartiles. \n(C) The quality score distributions for each set of SNP calls, separated into transitons (ts) and transversions (tv)"}
+```{r fig2, echo=F, fig.align = 'center', fig.width=6, fig.height=8, fig.cap="(A) Scatterplot of loci (points) by allele depth and minor allele frequency, colored by the number of chromosomes counted. Due to the sample size (n=10), minor allele frequencies are constrained by the number of chromosomes at the SNP site; there appears to be no relationship between depth (ie. read coverage) and minor allele frequencies. \n(B) Mean depth per locus for each individual. Violin plot lines indicate quartiles. \n(C) The quality score distributions for each set of SNP calls, separated into transitons (ts) and transversions (tv)"}
 fig_alleledepth_over_maf / fig_indvdepth / fig_quality_dist & 
   plot_annotation(tag_levels = 'A')
 ```
+
+
+----
 
 # Discussion
 
@@ -351,7 +359,9 @@ Interestingly, the sets of SNPs called by mpileup and freebayes showed a high de
 
 My analysis also revealed differences in the distribution of minor allele frequencies (MAF) and read depth at SNP loci (fig. 1). Specifically, mpileup shows a clear preference for SNPs with MAF of 0.5 and to a lesser degree 0.25 (relative to similar values). Both callers have a peak at low MAF (0.05) but otherwise mpileup has an even distribution from 0.10 to 0.5, when accounting for the constraint on these values by the small sample size (fig. 2A). The callers show differences in the read depth across loci (fig. 1B) and individuals (fig. 2B), as high-depth sites (\>250/ind.) are hard-filtered by `mpileup`, and mpileup identifies many more low-depth sites (\<70x) that are ignored by freebayes. As such, the concordance between sets would likely increase if stricter filters were used to mitigate these biases.
 
-Certain characteristics of the burbot data present challenges for variant calling. The highly-fragmented assembly means we are likely to miss many variants since they are not represented in the alignment. The relatively low coverage of the data means that a number of true variants are likely discarded because of high uncertainty in their classification. Further, burbot is not a model organism and does not have the same resources to develop useful prior probabilities for variant calling (eg. SNP databases for human variant calling). In the present work, the small number of subjects means that the identification of uncommon and rare variants is highly unlikely. If we were more interested in finding such loci, we would want to apply less stringent filtering and accept the cost of increased false discoveries.
+Certain characteristics of the burbot data present challenges for variant calling. The highly-fragmented assembly means we are likely to miss many variants since they are not represented in the alignment. The relatively low coverage of the data means that a number of true variants are likely discarded because of large uncertainty in their classification. Further, burbot is not a model organism and does not have the same resources to develop useful prior probabilities for variant calling, *eg*. SNP databases for human variant calling [@nielsen2011].
+
+In the present work, the small number of subjects means that the identification of uncommon and rare variants is highly unlikely. If we were more interested in finding such loci, we would want to apply less stringent filtering and accept the cost of increased false discoveries.
 
 ------------------------------------------------------------------------
 
@@ -359,9 +369,9 @@ Certain characteristics of the burbot data present challenges for variant callin
 
 # Supplemental
 
-I also examined the quality score distribution over sites and the mean per site depth by individual. These were computed with `bcftools stats` and `vcftools` respectively, as follows:
+I also examined the quality score distribution over sites and the mean per site depth by individual. These were computed with `bcftools stats` and `vcftools` respectively, as follows (bash code):
 
-```{r engine = 'bash', eval=FALSE}
+```{r stats_quality, engine = 'bash', eval=FALSE}
 ## quality scores from bf
 grep -E "Quality" mpileup.filter.recode.stats | cut -f1 --complement > mpileup.quality.stats
 grep ^QUAL mpileup.filter.recode.stats | cut -f1 --complement >> mpileup.quality.stats 
@@ -371,9 +381,6 @@ grep ^QUAL freebayes.filter.recode.stats | cut -f1 --complement >> freebayes.qua
 vcftools --gzvcf mpileup.filter.recode.vcf.gz --depth --out mpileup
 vcftools --gzvcf freebayes.filter.recode.vcf.gz --depth --out freebayes
 ```
-
-
-
 
 ### R code for parsing results data
 
@@ -451,6 +458,7 @@ qual_df <-
 ### R code for plotting results
 
 ```{r supplementary2, eval = F, echo=T, include=T}
+## Figure 1L
 # Allele frequency histogram (alleles stacked)
 fig_allelefreq <- 
   ggplot(AlleleFreq) +
@@ -471,7 +479,7 @@ fig_sitedepth <-
   theme_bw() +
   theme(legend.position = c(.8,.7))
 
-## SUPPLEMENTAL
+## Figure 2:
 
 # Allele depth over maf, coloured by n chromosomes
 fig_alleledepth_over_maf <- 
@@ -501,6 +509,7 @@ fig_indvdepth <-
     axis.ticks.x = element_blank(),
     legend.position = 'right'
   )
+# Quality score distribution; fill bars with type: ts or tv 
 fig_quality_dist <- qual_df %>% 
   mutate(QUAL = round(quality/25)*25) %>% 
   group_by(QUAL, caller) %>% 
@@ -524,25 +533,25 @@ fig_quality_dist <- qual_df %>%
 tribble(
   ~ Caller, ~ `raw SNPs`, ~ `raw ts/tv`, ~ `post-filter SNPs`, ~ `post-filter ts/tv`,
   "mpileup", 132046, 0.81, 11115, 0.87,
-  "freebayes", 106973, 0.44, 6722, 1.09
-) %>% 
-  pander::pander(caption = "Raw and filtered SNP counts and transition/transversion ratios for calls by mpileup and freebayes.")
-
+  "freebayes", 106973, 0.44, 6722, 1.09 
+  ) %>% 
+  pander::pander(caption = "Raw and filtered SNP counts and
+                 transition/transversion ratios for calls by mpileup 
+                 and freebayes.")
 ### fig 1
 (fig_allelefreq + fig_sitedepth) &
   plot_layout(guides = 'keep') &
   plot_annotation(tag_levels = 'A')
-
 ## table 2
-Overlap %>% pander::pander(caption = "Summary of total, shared, and unique SNPs called by mpileup and freebayes (after filtering).")
+Overlap %>% 
+  pander::pander(caption = "Summary of total, shared, and unique SNPs
+                 called by mpileup and freebayes (after filtering).")
 
 ### fig 2
 (fig_alleledepth_over_maf / fig_indvdepth / fig_quality_dist) & 
   plot_annotation(tag_levels = 'A')
 ```
 
-
 \newpage
 
 # References
-

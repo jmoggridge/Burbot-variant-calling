@@ -12,18 +12,20 @@ link-citations: true
 ---
 
 ```{r setup, echo=F}
-knitr::opts_chunk$set(warning = F, message = F, cache = T)
+knitr::opts_chunk$set(warning = F, message = F, cache = F)
 ```
 
 ------------------------------------------------------------------------
 
 # Introduction
 
-The analysis of genetic variants such as single-nucleotide polymorphisms (SNPs) and insertions/deletions (indels) by high-throughput sequencing is a central objective in studies of quantitative-trait loci, genome-wide associations, population structure, among others. These polymorphic sites are also of practical interest in clinical genomics, *eg*. to discover disease-causing mutations [@cornish2015], and in agriculture, where SNPs can be used as genetic markers to guide breeding of crops [@yao2020] and livestock [@ni2015]. As the cost of sequencing has decreased greatly and computational resources have improved, these techniques have become increasingly popular.
+The analysis of genetic variants such as single-nucleotide polymorphisms (SNPs) and insertions/deletions (indels) by high-throughput sequencing is a central objective in studies of quantitative-trait loci, genome-wide associations, and population structure, among others. These polymorphic sites are also of practical interest in clinical genomics, *eg*. to discover disease-causing mutations [@cornish2015], and in agriculture, where SNPs can be used as genetic markers to guide breeding of crops [@yao2020] and livestock [@ni2015]. As the cost of sequencing has decreased and computational resources have improved, these techniques have become increasingly popular.
 
 The identification of polymorphic sites from sequencing data, known as variant calling, is performed after alignment of reads to a reference genome. Because high-throughput sequencing and read-mapping are noisy, it is challenging but essential to differentiate true variants from artefacts, particularly in low-coverage data [@nielsen2011]. Many variant calling tools (`bcftools`, `GATK`, `freebayes`, *etc.*) have been created for this classification task, though these differ in their error correction processes and statistical models for inferring genotypes. Further filtering of variants is generally applied after calling, and how this is performed depends on the nature of the study.
 
-In the current work I compared variant calling by two tools: `bcftools mpileup/call` (previously `samtools`) and `freebayes`. The results were compared in terms of the number of SNPs, the overlap between sets, the depth at each position, and their minor allele frequencies. Both `bcftools` and `freebayes` apply Bayesian models to estimate genotype posterior probabilities, though they differ in how this is implemented. `bcftools` uses a two step process where `mpileup` first creates the 'pileup' of all reads at variant sites, and then `call` is used to infer genotypes at these [@li2011; @danecek2021]. This implementation has the advantage of being very fast. `freebayes` a uses different approach to inferring haplotypes in that it does not use the alignment but the full reads [@garrison2012; @howtof]. Previous comparisons of variant callers have often found low concordance between tools and issues with sensitivity [@orawe2013; @cornish2015]. However, others have reported high concordance and accuracy in their evaluation [@hwang2015]; the best method is likely dependent on nature of the sequencing data (*eg.* whole-genome or exome, RAD-seq, RNA-seq, *etc*.), the depth of coverage, and the type of variants of interest (*eg.* SNPs or indels).
+Both `bcftools mpileup/call` and `freebayes` apply Bayesian models to estimate genotype posterior probabilities, though they differ in how this is implemented. `bcftools` uses a two step process where `mpileup` first creates the 'pileup' of all reads at variant sites, and then `call` is used to infer genotypes at these [@li2011; @danecek2021]. This implementation has the advantage of being very fast. `freebayes` a uses different approach to inferring haplotypes in that it does not use the alignment but the full reads [@garrison2012; @howtof].
+
+I compared variant calling by two tools: `bcftools mpileup/call` and `freebayes`. The results were compared in terms of the number of SNPs, the overlap between sets, the depth at each position, and their minor allele frequencies. Previous comparisons of variant callers have often found low concordance between tools and issues with sensitivity [@orawe2013; @cornish2015]. However, others have reported high concordance and accuracy in their evaluation [@hwang2015]; the best method is likely dependent on nature of the sequencing data (*eg.* whole-genome or exome, RAD-seq, RNA-seq, *etc*.), the sequencing depth, and the type of variants of interest (*eg.* SNPs or indels).
 
 # Methods
 
@@ -227,8 +229,8 @@ vcf_df <- SiteDepth %>%
 cnames <- c('id', 'quality', 'n_snps', 'ts', 'tv', 'indels')
 qual_df <- 
   bind_rows(
-    read_tsv("./data/mpileup.quality.stats", skip = 1L, col_names = cnames) %>%  mutate(caller = "mpileup"),
-    read_tsv("./data/freebayes.quality.stats", skip = 1L, col_names = cnames) %>%  mutate(caller = "freebayes")
+    read_tsv("./data/freebayes.quality.stats", skip = 1L, col_names = cnames) %>%  mutate(caller = "freebayes"),
+    read_tsv("./data/mpileup.quality.stats", skip = 1L, col_names = cnames) %>%  mutate(caller = "mpileup")
   ) %>%  mutate(caller = as_factor(caller))
 ```
 
@@ -319,7 +321,7 @@ tribble(
   pander::pander(caption = "Raw and filtered SNP counts and transition/transversion ratios for calls by mpileup and freebayes.")
 ```
 
-The distribution minor allele frequencies of SNPs from mpileup shows a U-shape with peaks at 0.05 and 0.5, whereas those from freebayes peak at 0.05 and are otherwise evenly distributed (fig.1A). The range of possible values is constrained due to the small sample size (some values can only be obtained with a specific amount of missing data; fig. 1B). The mean depth per locus across individuals is mostly in the range of 8x-30x, with both callers showing peaks at 25x and similar distributions (fig. 2A). The mean depth (per site per subject) for mpileup was 17x and for freebayes 16x reads. Both callers have some extreme outliers in terms of site depth: the maximum depth for freebayes was 16,162 reads, while for mpileup it was only 2522 reads. The minimum site depth was 5 and 3 for freebayes and mpileup respectively and mpileup has a greater proportion of low-depth sites in general. Freebayes also had a greater mean depth per individual (fig. 2B). Both callers show similar distributions of quality scores, though mpileup calls a greater proportion of transversions at low-quality loci than freebayes (fig. 2C).
+The distribution minor allele frequencies of SNPs from mpileup shows a U-shape with peaks at 0.05 and 0.5, whereas those from freebayes peak at 0.05 and are otherwise evenly distributed (fig.1A). The range of possible values is constrained due to the small sample size (some values can only be obtained with a specific amount of missing data; fig. 1B). The mean depth per locus across individuals is mostly in the range of 8x-30x, with both callers showing peaks at 25x and similar distributions (fig. 2A). The mean depth (per site, per subject) for mpileup was 17x and for freebayes 16x reads. Both callers have some extreme outliers in terms of site depth: the maximum depth (summed across individuals) for freebayes was 16,162 reads, while for mpileup it was only 2522 reads. The minimum site depth (summed across individuals) was 5 and 3 for freebayes and mpileup respectively and mpileup calls a greater proportion of low-depth sites in general (fig. 2A). Freebayes also had a greater mean depth for each individual (fig. 2B). Both tools show similar distributions of quality scores, though mpileup calls a greater proportion of transversions at low-quality loci than freebayes (fig. 2C).
 
 ```{r table2_overlap, echo=F}
 Overlap %>% 
@@ -344,9 +346,9 @@ In this work I compared the sets of biallelic SNPs called by two tools, bcftools
 
 Interestingly, the sets of SNPs called by mpileup and freebayes showed a high degree of overlap, with over 90% of freebayes calls being shared with the larger mpileup set (table 2). This result is somewhat in agreement with @hwang2015, who found \~90% concordance between (Samtools) mpileup, freebayes, and GATK on the gold-standard Genome in a Bottle dataset. My results suggest then, that either mpileup has low specificity (calls variants that don't exist), or that freebayes has low sensitivity (misses true variants). This does not seem to be the case generally though, as @cornish2015 suggest the opposite and found that a variety of tools had similarly low sensitivity on the GiaB gold-standard data.
 
-My analysis also revealed differences in the distribution of minor allele frequencies (MAF) and read depth at SNP loci (fig. 1). Specifically, mpileup shows a clear preference for SNPs with MAF of 0.5 and to a lesser degree 0.25 (relative to similar values). Both callers have a peak at low MAF (0.05) but otherwise mpileup has an even distribution from 0.10 to 0.5, when accounting for the constraint on these values by the small sample size (fig. 1B). The callers show differences in the read depth across loci (fig. 2A) and individuals (fig. 2B), as high-depth sites (\>250x/ind.) are hard-filtered by `mpileup`, and mpileup identifies many more low-depth sites (\<70x) that are ignored by freebayes. As such, the concordance between sets would likely increase if stricter filters were used to mitigate these biases.
+My analysis also revealed differences in the distribution of minor allele frequencies (MAF) and read depth at SNP loci (fig. 1). Specifically, mpileup shows a clear preference for SNPs with MAF of 0.5 and to a lesser degree 0.25 (relative to similar values). Both callers have a peak at low MAF (0.05) but otherwise mpileup has an even distribution from 0.10 to 0.5, when accounting for the constraint on these values by the small sample size (fig. 1B). The callers show differences in the read depth across loci (fig. 2A) and individuals (fig. 2B), as high-depth sites (\>250x/subject) are hard-filtered by `mpileup`, and mpileup identifies many more low-depth sites (mean \< 7x/subject) that are ignored by freebayes. As such, the concordance between sets would likely increase if stricter filters were used to mitigate these biases.
 
-Certain characteristics of the burbot data present challenges for variant calling. The highly-fragmented assembly means we are likely to miss many variants since they are not represented in the alignment. The relatively low coverage of the data means that a number of true variants are likely discarded because of large uncertainty in their classification. Further, burbot is not a model organism and does not have the same resources to develop useful prior probabilities for variant calling, (*eg*. SNP databases for human variant calling; [@nielsen2011]), or benchmark data to validate pipelines (such as GiaB; [@zook2019a]).
+Certain characteristics of the burbot data present challenges for variant calling. The highly-fragmented assembly means we are likely to miss many variants since they are not represented in the alignment. The relatively low coverage of the data means that a number of true variants are likely discarded because of large uncertainty in their classification. Further, burbot is not a model organism and does not have the same resources to develop useful prior probabilities for variant calling, *eg*. SNP databases for human variant calling [@nielsen2011], or benchmark datasets (such as GiaB) to validate pipelines [@zook2019a].
 
 In the present work, the small number of subjects means that the identification of uncommon variants is highly unlikely. If we interested in performing a population structure analysis of burbot, we should sequence more subjects and instead apply a filter for minor allele count instead of frequency to incorporate information from uncommon and rare variants [@linck2019]. Application of additional filters, *eg*. for strand-bias, site depth, and depth variation, would likely improve the accuracy of variant calling [@oleary2018].
 
@@ -442,7 +444,7 @@ qual_df <-
   ) %>%  mutate(caller = as_factor(caller))
 ```
 
-### R code for plotting results
+### R code for creating figures
 
 ```{r supplementary2, eval = F, echo=T, include=T}
 ## Figure 1L

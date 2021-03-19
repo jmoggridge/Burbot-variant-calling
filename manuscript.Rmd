@@ -261,12 +261,11 @@ fig_alleledepth_over_maf <-
 
 # The distribution of depth per-site summed across individuals
 fig_sitedepth <- 
-  ggplot(SiteDepth, aes(x = allele_depth, fill = caller, color = caller)) +
+  ggplot(SiteDepth, aes(x = allele_depth/10,
+                        fill = caller, color = caller)) +
   geom_density(alpha = 0.12) +
-  geom_vline(aes(xintercept = mean(allele_depth), color = caller),
-             lty = 2) +
   scale_x_log10() +
-  labs(x = 'Depth', y = 'Density') +
+  labs(x = 'Mean Site Depth per Individual', y = 'Density') +
   guides(colour = guide_legend(override.aes = list(size=1, pch=15))) +
   theme_bw()
   # theme(legend.position = c(.8,.7))
@@ -278,15 +277,17 @@ fig_indvdepth <-
   geom_violin(alpha = 0.1, draw_quantiles = c(.25, .5, .75), trim = F) +
   geom_quasirandom(aes(color = individual), size = 3, width = 0.3) +
   scale_color_carto_d(palette = 2) +
-  guides(colour = guide_legend(override.aes = list(size = 4, pch = 16))) +
+  guides(colour = guide_legend(override.aes = list(size = 2, pch = 16, keyheight=0.01, default.unit="cm"))) +
   facet_wrap( ~ caller, scales = 'free_x') +
   labs(y = 'Mean Depth', x = '', color = 'Subject') +
   theme_bw() +
   theme(
     axis.text.x = element_blank(),
     axis.ticks.x = element_blank(),
-    legend.position = 'right'
+    legend.position = 'right', legend.text = element_text(size=8),
+    legend.spacing.y = unit(0.01, 'cm')
   )
+
 fig_quality_dist <- qual_df %>% 
   mutate(QUAL = round(quality/25)*25) %>% 
   group_by(QUAL, caller) %>% 
@@ -318,7 +319,7 @@ tribble(
   pander::pander(caption = "Raw and filtered SNP counts and transition/transversion ratios for calls by mpileup and freebayes.")
 ```
 
-The distribution minor allele frequencies of SNPs from mpileup shows a U-shape with peaks at 0.05 and 0.5, whereas those from freebayes peak at 0.05 and are otherwise evenly distributed (fig.1A). The range of possible values is constrained due to the small sample size (some values can only be obtained with a specific amount of missing data; fig. 1B). The sum depth per locus across all individuals is generally in the range of 75x-200x, with both callers showing similar distributions (fig. 2A). The mean depth for mpileup was 174 reads and for freebayes 162 reads. Both callers have some extreme outliers in terms of site depth: the maximum depth for freebayes was 16,162 reads, while for mpileup it was only 2522 reads. The minimum site depth was 5 and 3 for freebayes and mpileup respectively and mpileup has a greater proportion of low-depth sites in general. Freebayes also had a greater mean depth per individual (fig. 2B). Both callers show similar distributions of quality scores, though mpileup calls a greater proportion of transversions at low-quality loci than freebayes (fig. 2C).
+The distribution minor allele frequencies of SNPs from mpileup shows a U-shape with peaks at 0.05 and 0.5, whereas those from freebayes peak at 0.05 and are otherwise evenly distributed (fig.1A). The range of possible values is constrained due to the small sample size (some values can only be obtained with a specific amount of missing data; fig. 1B). The mean depth per locus across individuals is mostly in the range of 8x-30x, with both callers showing peaks at 25x and similar distributions (fig. 2A). The mean depth (per site per subject) for mpileup was 17x and for freebayes 16x reads. Both callers have some extreme outliers in terms of site depth: the maximum depth for freebayes was 16,162 reads, while for mpileup it was only 2522 reads. The minimum site depth was 5 and 3 for freebayes and mpileup respectively and mpileup has a greater proportion of low-depth sites in general. Freebayes also had a greater mean depth per individual (fig. 2B). Both callers show similar distributions of quality scores, though mpileup calls a greater proportion of transversions at low-quality loci than freebayes (fig. 2C).
 
 ```{r table2_overlap, echo=F}
 Overlap %>% 
@@ -326,18 +327,16 @@ Overlap %>%
   pander::pander(caption = "Summary of total, shared, and unique SNPs called by mpileup and freebayes (after filtering).")
 ```
 
-```{r fig1, echo=F, fig.align = 'center', fig.width=8, fig.height=4, fig.cap="(A) Distribution of minor allele frequency; SNPs with frequency = 0 or 1 were omitted. (B) Distribution of depth per locus summed across all individuals (nb: the x-axis is log-scaled)."}
+```{r fig1, echo=F, fig.align = 'center', fig.width=8, fig.height=4, fig.cap="(A) Distribution of minor allele frequency of freebayes and mpileup SNP calls; SNPs with frequency = 0 or 1 were discarded in filtering (B) Scatterplot of loci (points) by allele depth and minor allele frequency, colored by the number of chromosomes counted. Due to the sample size (n=10), minor allele frequencies are constrained by the number of chromosomes at the SNP site; there appears to be no relationship between depth (ie. read coverage) and minor allele frequencies. "}
 (fig_allelefreq + fig_alleledepth_over_maf) &
   plot_layout(guides = 'keep') &
   plot_annotation(tag_levels = 'A')
 ```
 
-```{r fig2, echo=F, fig.align = 'center', fig.width=6, fig.height=8, fig.cap="(A) Scatterplot of loci (points) by allele depth and minor allele frequency, colored by the number of chromosomes counted. Due to the sample size (n=10), minor allele frequencies are constrained by the number of chromosomes at the SNP site; there appears to be no relationship between depth (ie. read coverage) and minor allele frequencies. \n(B) Mean depth per locus for each individual. Violin plot lines indicate quartiles. \n(C) The quality score distributions for each set of SNP calls, separated into transitons (ts) and transversions (tv)"}
+```{r fig2, echo=F, fig.align = 'center', fig.width=6, fig.height=8, fig.cap="(A) Distribution of mean depth at SNP loci identified by freebayes and mpileup from 10 burbot subjects (nb: the x-axis is log-scaled).(B) Mean depth per locus for each individual. Violin plot lines indicate quartiles. \n(C) The quality score distributions for each set of SNP calls, separated into transitons (ts) and transversions (tv)"}
  fig_sitedepth / fig_indvdepth / fig_quality_dist & 
   plot_annotation(tag_levels = 'A')
 ```
-
-------------------------------------------------------------------------
 
 # Discussion
 
@@ -349,7 +348,7 @@ My analysis also revealed differences in the distribution of minor allele freque
 
 Certain characteristics of the burbot data present challenges for variant calling. The highly-fragmented assembly means we are likely to miss many variants since they are not represented in the alignment. The relatively low coverage of the data means that a number of true variants are likely discarded because of large uncertainty in their classification. Further, burbot is not a model organism and does not have the same resources to develop useful prior probabilities for variant calling, (*eg*. SNP databases for human variant calling; [@nielsen2011]), or benchmark data to validate pipelines (such as GiaB; [@zook2019a]).
 
-In the present work, the small number of subjects means that the identification of uncommon and rare variants is highly unlikely. If we were more interested in finding such loci, we would want to apply less stringent filtering and accept the cost of increased false discoveries. However,
+In the present work, the small number of subjects means that the identification of uncommon variants is highly unlikely. If we interested in performing a population structure analysis of burbot, we should sequence more subjects and instead apply a filter for minor allele count instead of frequency to incorporate information from uncommon and rare variants [@linck2019]. Application of additional filters, *eg*. for strand-bias, site depth, and depth variation, would likely improve the accuracy of variant calling [@oleary2018].
 
 ------------------------------------------------------------------------
 

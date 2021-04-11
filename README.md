@@ -1,2 +1,2 @@
 # burbot-variant-calling
-Calling genetic variants from Burbot genotyping by sequencing data using GATK, freeBayes, and BCFtools 
+Calling genetic variants from Burbot genotyping-by-sequnce alignments (from bwa) using `freeBayes` and `BCFtools mpileup`. 
